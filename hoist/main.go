@@ -63,23 +63,27 @@ func scanDirectory(rootDir string) (map[string][]string, error) {
 
 // Function to hoist duplicate files and create links to hoisted files
 func hoistFiles(fileHashes map[string][]string, rootDir string) error {
+	// keep track of the number of times each file is hoisted, then calculate the total size saved
+	hoistedFileCounts := make(map[string]int)
 	// create a directory in the root directory to store the hoisted files
 	hoistDirName := filepath.Join(rootDir, "hoisted-resources")
 	for fileHash, paths := range fileHashes {
 		if len(paths) > 1 {
 			for _, originalPath := range paths[1:] {
-				hoistHashedPath := filepath.Join(hoistDirName, fileHash)
-				fmt.Println("Moving:", originalPath, hoistHashedPath)
+				// create the hoisted full path, in the format hoistDirname/<filename>_<hash>.<ext>
+				hoistFullPath := filepath.Join(hoistDirName, filepath.Base(originalPath)+"_"+fileHash+"."+filepath.Ext(originalPath))
+				hoistedFileCounts[fileHash]++
+				fmt.Println("From:", originalPath, "\n\tTo:", hoistFullPath)
 				// create the target directory for the hoisted file
-				if err := os.MkdirAll(filepath.Dir(hoistHashedPath), 0755); err != nil {
+				if err := os.MkdirAll(filepath.Dir(hoistFullPath), 0755); err != nil {
 					return err
 				}
 				// move the file to the hoisted location
-				if err := os.Rename(originalPath, hoistHashedPath); err != nil {
+				if err := os.Rename(originalPath, hoistFullPath); err != nil {
 					return err
 				}
 				// get the relative path from the original file location, to the hoistPath
-				relHoistedPath, err := filepath.Rel(filepath.Dir(originalPath), hoistHashedPath)
+				relHoistedPath, err := filepath.Rel(filepath.Dir(originalPath), hoistFullPath)
 				if err != nil {
 					return err
 				}
@@ -89,6 +93,20 @@ func hoistFiles(fileHashes map[string][]string, rootDir string) error {
 			}
 		}
 	}
+	// print the hoisted file counts
+	for hoistedPath, count := range hoistedFileCounts {
+		fmt.Println("Hoisted:", hoistedPath, "Count:\t", count)
+	}
+	// print the total size saved
+	var totalSizeSaved int64
+	for hoistedPath, count := range hoistedFileCounts {
+		fileInfo, err := os.Stat(hoistedPath)
+		if err != nil {
+			return err
+		}
+		totalSizeSaved += fileInfo.Size() * int64(count)
+	}
+	fmt.Println("Total size saved:", totalSizeSaved, "bytes")
 	return nil
 }
 
