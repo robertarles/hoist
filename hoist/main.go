@@ -78,23 +78,32 @@ func hoistFiles(fileHashes map[string][]string, rootDir string) error {
 				fmt.Println("- ", originalPath, "\n\t->:", hoistFullPath)
 				// create the target directory for the hoisted file
 				if err := os.MkdirAll(filepath.Dir(hoistFullPath), 0755); err != nil {
-					return err
+					return fmt.Errorf("failed to create hoist directory: %w", err)
 				}
-				// check if the file already exists in the hoisted directory
+				// if the file does not already exists in the hoisted directory
 				if _, err := os.Stat(hoistFullPath); os.IsNotExist(err) {
 					// move the file to the hoisted location
 					if err := os.Rename(originalPath, hoistFullPath); err != nil {
-						return err
+						return fmt.Errorf("failed to move original file: %w", err)
+					}
+				} else {
+					// rename the file, in place, with the hash to avoid collisions
+					if err := os.Rename(originalPath, originalPath+"_"+fileHash); err != nil {
+						return fmt.Errorf("failed to rename original file: %w", err)
 					}
 				}
 				// get the relative path from the original file location, to the hoistPath
 				relHoistedPath, err := filepath.Rel(filepath.Dir(originalPath), hoistFullPath)
 				if err != nil {
-					return err
+					return fmt.Errorf("failed to calulate relative path: %w", err)
 				}
 				// finally, create a symlink to replace the hoisted file
 				if err := os.Symlink(relHoistedPath, originalPath); err != nil {
-					return err
+					// replace original file with the renamed file
+					if err := os.Rename(originalPath+"_"+fileHash, originalPath); err != nil {
+						return fmt.Errorf("failed to create symlink, and failed to restore original file while recovering from hoisting error: %w", err)
+					}
+					return fmt.Errorf("failed to create symlink: %w", err)
 				}
 			}
 		}
