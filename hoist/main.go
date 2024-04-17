@@ -34,9 +34,9 @@ func isSymlink(filePath string) (bool, error) {
 }
 
 // Function to recursively scan a directory and identify duplicate files
-func scanDirectory(rootDir string) (map[string][]string, error) {
+func scanDirectoryForDupes(rootDir string) (map[string][]string, error) {
 	fileHashes := make(map[string][]string)
-
+	// Walk the directory and calculate the hash of each file
 	err := filepath.Walk(rootDir, func(path string, info os.FileInfo, err error) error {
 		if err != nil {
 			return err
@@ -49,6 +49,7 @@ func scanDirectory(rootDir string) (map[string][]string, error) {
 				if err != nil {
 					return err
 				}
+				// append the this file to the list of files for this hash
 				fileHashes[hash] = append(fileHashes[hash], path)
 			}
 		}
@@ -69,24 +70,29 @@ func hoistFiles(fileHashes map[string][]string, rootDir string) error {
 	hoistDirName := filepath.Join(rootDir, "hoisted-resources")
 	for fileHash, paths := range fileHashes {
 		if len(paths) > 1 {
-			for _, originalPath := range paths[1:] {
+			// for each file with the same hash
+			for _, originalPath := range paths {
 				// create the hoisted full path, in the format hoistDirname/<filename>_<hash>.<ext>
-				hoistFullPath := filepath.Join(hoistDirName, filepath.Base(originalPath)+"_"+fileHash+"."+filepath.Ext(originalPath))
+				hoistFullPath := filepath.Join(hoistDirName, fileHash+filepath.Ext(originalPath))
 				hoistedFileCounts[fileHash]++
-				fmt.Println("From:", originalPath, "\n\tTo:", hoistFullPath)
+				fmt.Println("- ", originalPath, "\n\t->:", hoistFullPath)
 				// create the target directory for the hoisted file
 				if err := os.MkdirAll(filepath.Dir(hoistFullPath), 0755); err != nil {
 					return err
 				}
-				// move the file to the hoisted location
-				if err := os.Rename(originalPath, hoistFullPath); err != nil {
-					return err
+				// check if the file already exists in the hoisted directory
+				if _, err := os.Stat(hoistFullPath); os.IsNotExist(err) {
+					// move the file to the hoisted location
+					if err := os.Rename(originalPath, hoistFullPath); err != nil {
+						return err
+					}
 				}
 				// get the relative path from the original file location, to the hoistPath
 				relHoistedPath, err := filepath.Rel(filepath.Dir(originalPath), hoistFullPath)
 				if err != nil {
 					return err
 				}
+				// finally, create a symlink to replace the hoisted file
 				if err := os.Symlink(relHoistedPath, originalPath); err != nil {
 					return err
 				}
@@ -135,7 +141,7 @@ func main() {
 
 	rootDir := os.Args[1]
 
-	fileHashes, err := scanDirectory(rootDir)
+	fileHashes, err := scanDirectoryForDupes(rootDir)
 	if err != nil {
 		fmt.Println("Error:", err)
 		os.Exit(1)

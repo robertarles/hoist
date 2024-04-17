@@ -13,7 +13,8 @@ buildlocal: ## build the app
   cd ..
 
 installlocal: ## install the app
-  cd hoist; go install -ldflags "-X main.Version=$(cat Version.go | grep 'const Version' | cut -d' ' -f4)"; 
+  cd hoist; 
+  go install -ldflags "-X main.Version=$(cat Version.go | grep 'const Version' | cut -d' ' -f4)"; 
   cd ..
 
 testrun: ## run hoist against ./text/sampledirs
