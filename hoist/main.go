@@ -19,7 +19,7 @@ func calculateHash(filePath string) (string, error) {
 
 	hasher := sha256.New()
 	if _, err := io.Copy(hasher, file); err != nil {
-		return "", err
+		return "error hashing", err
 	}
 
 	return hex.EncodeToString(hasher.Sum(nil)), nil
@@ -100,8 +100,8 @@ func hoistFiles(fileHashes map[string][]string, rootDir string) error {
 				// finally, create a symlink to replace the hoisted file
 				if err := os.Symlink(relHoistedPath, originalPath); err != nil {
 					// replace original file with the renamed file
-					if err := os.Rename(originalPath+"_"+fileHash, originalPath); err != nil {
-						return fmt.Errorf("failed to create symlink, and failed to restore original file while recovering from hoisting error: %w", err)
+					if errRemaming := os.Rename(originalPath+"_"+fileHash, originalPath); errRemaming != nil {
+						return fmt.Errorf("failed to create symlink, and failed to restore original file while recovering from hoisting error: %w", errRemaming)
 					}
 					return fmt.Errorf("failed to create symlink: %w", err)
 				}
