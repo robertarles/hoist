@@ -68,31 +68,34 @@ func hoistFiles(fileHashes map[string][]string, rootDir string) error {
 	hoistedFileCounts := make(map[string]int)
 	// create a directory in the root directory to store the hoisted files
 	hoistDirName := filepath.Join(rootDir, "hoisted-resources")
+	// create the target directory for the hoisted file
+	if err := os.MkdirAll(hoistDirName, 0755); err != nil {
+		return fmt.Errorf("failed to create hoist directory: %w", err)
+	}
 	for fileHash, paths := range fileHashes {
 		if len(paths) > 1 {
+			fmt.Printf("[DEBUG] filehash:%v has %v files\n", fileHash, len(paths))
 			// for each file with the same hash
 			for _, originalPath := range paths {
 				// create the hoisted full path, in the format hoistDirname/<filename>_<hash>.<ext>
 				hoistFullPath := filepath.Join(hoistDirName, fileHash+filepath.Ext(originalPath))
 				hoistedFileCounts[fileHash]++
 				fmt.Println("- ", originalPath, "\n\t->:", hoistFullPath)
-				// create the target directory for the hoisted file
-				if err := os.MkdirAll(filepath.Dir(hoistFullPath), 0755); err != nil {
-					return fmt.Errorf("failed to create hoist directory: %w", err)
-				}
-				// if the file does not already exists in the hoisted directory
+				// if the file does not already exists in the hoisted directory, hoist this one up
 				if _, err := os.Stat(hoistFullPath); os.IsNotExist(err) {
 					// move the file to the hoisted location
 					if err := os.Rename(originalPath, hoistFullPath); err != nil {
 						return fmt.Errorf("failed to move original file: %w", err)
 					}
 				} else {
-					// rename the file, in place, with the hash to avoid collisions
-					if err := os.Rename(originalPath, originalPath+"_"+fileHash); err != nil {
-						return fmt.Errorf("failed to rename original file: %w", err)
+					// rename the file, in place, and defer delete for after the link is created
+					tmpFilename := filepath.Join(filepath.Dir(originalPath), filepath.Base(originalPath)+"_"+fileHash+".tmp")
+					if err := os.Rename(originalPath, tmpFilename); err != nil {
+						return fmt.Errorf("failed to make backup tmp of original file: %w", err)
 					}
+					defer os.Remove(tmpFilename)
 				}
-				// get the relative path from the original file location, to the hoistPath
+				// get the relative path FROM the original file location TO the hoistPath
 				relHoistedPath, err := filepath.Rel(filepath.Dir(originalPath), hoistFullPath)
 				if err != nil {
 					return fmt.Errorf("failed to calulate relative path: %w", err)

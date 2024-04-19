@@ -70,8 +70,8 @@ func TestScanDirectoryForDupes(t *testing.T) {
 }
 
 func TestHoistFiles(t *testing.T) {
-	existingDir := "./testing_resources/static_file_structure"
-	tmpDir := "./testing_resources/tmp"
+	existingDir := "./testing_resources/file_structure"
+	tmpDir := "./testing_resources/tmp_copy_file_structure"
 	// remove the existing tmp directory
 	if err := os.RemoveAll(tmpDir); err != nil {
 		fmt.Printf("Error removing old tmp dir [%v] for testing", tmpDir)
