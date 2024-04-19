@@ -62,15 +62,8 @@ func scanDirectoryForDupes(rootDir string) (map[string][]string, error) {
 	return fileHashes, nil
 }
 
-/*
-*
-
-	Function to hoist duplicate files and create links to hoisted files
-	returns a queue of actions required to hoist the files, they must be handled in
-	order starting with index 0
-*/
-func hoistFiles(fileHashes map[string][]string, rootDir string) ([]map[string][]string, error) {
-	actionsRequired := []map[string][]string{}
+// Function to hoist duplicate files and create links to hoisted files
+func hoistFiles(fileHashes map[string][]string, rootDir string) error {
 	// keep track of the number of times each file is hoisted, then calculate the total size saved
 	hoistedFileCounts := make(map[string]int)
 	// create a directory in the root directory to store the hoisted files
@@ -85,33 +78,32 @@ func hoistFiles(fileHashes map[string][]string, rootDir string) ([]map[string][]
 				fmt.Println("- ", originalPath, "\n\t->:", hoistFullPath)
 				// create the target directory for the hoisted file
 				if err := os.MkdirAll(filepath.Dir(hoistFullPath), 0755); err != nil {
-					return nil, fmt.Errorf("failed to create hoist directory: %w", err)
+					return fmt.Errorf("failed to create hoist directory: %w", err)
 				}
 				// if the file does not already exists in the hoisted directory
 				if _, err := os.Stat(hoistFullPath); os.IsNotExist(err) {
-					// add instruction to move the file to the hoisted location
-					actionsRequired = append(actionsRequired, map[string][]string{"move": {originalPath, hoistFullPath}})
+					// move the file to the hoisted location
 					if err := os.Rename(originalPath, hoistFullPath); err != nil {
-						return nil, fmt.Errorf("failed to move original file: %w", err)
+						return fmt.Errorf("failed to move original file: %w", err)
 					}
 				} else {
 					// rename the file, in place, with the hash to avoid collisions
 					if err := os.Rename(originalPath, originalPath+"_"+fileHash); err != nil {
-						return nil, fmt.Errorf("failed to rename original file: %w", err)
+						return fmt.Errorf("failed to rename original file: %w", err)
 					}
 				}
 				// get the relative path from the original file location, to the hoistPath
 				relHoistedPath, err := filepath.Rel(filepath.Dir(originalPath), hoistFullPath)
 				if err != nil {
-					return nil, fmt.Errorf("failed to calulate relative path: %w", err)
+					return fmt.Errorf("failed to calulate relative path: %w", err)
 				}
 				// finally, create a symlink to replace the hoisted file
 				if err := os.Symlink(relHoistedPath, originalPath); err != nil {
 					// replace original file with the renamed file
 					if errRemaming := os.Rename(originalPath+"_"+fileHash, originalPath); errRemaming != nil {
-						return nil, fmt.Errorf("failed to create symlink, and failed to restore original file while recovering from hoisting error: %w", errRemaming)
+						return fmt.Errorf("failed to create symlink, and failed to restore original file while recovering from hoisting error: %w", errRemaming)
 					}
-					return nil, fmt.Errorf("failed to create symlink: %w", err)
+					return fmt.Errorf("failed to create symlink: %w", err)
 				}
 			}
 		}
@@ -125,15 +117,12 @@ func hoistFiles(fileHashes map[string][]string, rootDir string) ([]map[string][]
 	for hoistedPath, count := range hoistedFileCounts {
 		fileInfo, err := os.Stat(hoistedPath)
 		if err != nil {
-			return nil, err
+			return err
 		}
 		totalSizeSaved += fileInfo.Size() * int64(count)
 	}
 	fmt.Println("Total size saved:", totalSizeSaved, "bytes")
-	return actionsRequired, nil
-}
-
-func fileHoister() {
+	return nil
 }
 
 func printHelp() {
