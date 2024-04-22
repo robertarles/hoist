@@ -9,6 +9,16 @@ import (
 	"path/filepath"
 )
 
+type Settings struct {
+	hoistDirname string
+}
+
+func NewSettings() *Settings {
+	return &Settings{
+		hoistDirname: "hoisted-resources",
+	}
+}
+
 // Function to calculate the SHA256 hash of a file
 func calculateHash(filePath string) (string, error) {
 	file, err := os.Open(filePath)
@@ -36,10 +46,17 @@ func isSymlink(filePath string) (bool, error) {
 // Function to recursively scan a directory and identify duplicate files
 func scanDirectoryForDupes(rootDir string) (map[string][]string, error) {
 	fileHashes := make(map[string][]string)
+	settings := NewSettings()
+
 	// Walk the directory and calculate the hash of each file
 	err := filepath.Walk(rootDir, func(path string, info os.FileInfo, err error) error {
+		// make the Walk method skip the hoist directory
 		if err != nil {
 			return err
+		}
+		// skip the hoist directory
+		if filepath.Base(rootDir) == filepath.Join(rootDir, settings.hoistDirname) {
+			return filepath.SkipDir
 		}
 		// skip all links
 		if isLink, _ := isSymlink(path); !isLink {
@@ -72,41 +89,59 @@ func hoistFiles(fileHashes map[string][]string, rootDir string) error {
 	if err := os.MkdirAll(hoistDirName, 0755); err != nil {
 		return fmt.Errorf("failed to create hoist directory: %w", err)
 	}
+	// for each hash made, create the links for the files of that hash
 	for fileHash, paths := range fileHashes {
 		if len(paths) > 1 {
-			fmt.Printf("[DEBUG] filehash:%v has %v files\n", fileHash, len(paths))
+			// DEBUG fmt.Printf("[DEBUG] filehash:%v has %v files\n", fileHash, len(paths))
 			// for each file with the same hash
 			for _, originalPath := range paths {
 				// create the hoisted full path, in the format hoistDirname/<filename>_<hash>.<ext>
-				hoistFullPath := filepath.Join(hoistDirName, fileHash+filepath.Ext(originalPath))
-				hoistedFileCounts[fileHash]++
-				fmt.Println("- ", originalPath, "\n\t->:", hoistFullPath)
+				hoistPath := filepath.Join(hoistDirName, fileHash+filepath.Ext(originalPath))
+				hoistedFileCounts[hoistPath]++
+				// create a tmp filename in this scope to enable deferred removal
+				tmpFilename := filepath.Join(filepath.Dir(originalPath), filepath.Base(originalPath)+"_"+fileHash+".tmp")
+				fmt.Println("- ", originalPath, "\n\t->:", hoistPath)
 				// if the file does not already exists in the hoisted directory, hoist this one up
-				if _, err := os.Stat(hoistFullPath); os.IsNotExist(err) {
+				if _, err := os.Stat(hoistPath); os.IsNotExist(err) {
+					// fmt.Println("[DEBUG] Hoisted file not found, hoisting:", originalPath, "to:", hoistPath)
 					// move the file to the hoisted location
-					if err := os.Rename(originalPath, hoistFullPath); err != nil {
+					if err := os.Rename(originalPath, hoistPath); err != nil {
+						fmt.Printf("Error moving file: %v\n", err)
 						return fmt.Errorf("failed to move original file: %w", err)
 					}
 				} else {
+					// fmt.Printf("[DEBUG] Hoisted file found, renaming original %v to tmp file: %v", originalPath, hoistPath)
 					// rename the file, in place, and defer delete for after the link is created
-					tmpFilename := filepath.Join(filepath.Dir(originalPath), filepath.Base(originalPath)+"_"+fileHash+".tmp")
 					if err := os.Rename(originalPath, tmpFilename); err != nil {
+						fmt.Printf("Error renaming original file: %v\n", err)
 						return fmt.Errorf("failed to make backup tmp of original file: %w", err)
 					}
-					defer os.Remove(tmpFilename)
 				}
 				// get the relative path FROM the original file location TO the hoistPath
-				relHoistedPath, err := filepath.Rel(filepath.Dir(originalPath), hoistFullPath)
+				relHoistedPath, err := filepath.Rel(filepath.Dir(originalPath), hoistPath)
 				if err != nil {
+					fmt.Printf("Error calculating relative path: %v\n", err)
 					return fmt.Errorf("failed to calulate relative path: %w", err)
 				}
 				// finally, create a symlink to replace the hoisted file
 				if err := os.Symlink(relHoistedPath, originalPath); err != nil {
-					// replace original file with the renamed file
-					if errRemaming := os.Rename(originalPath+"_"+fileHash, originalPath); errRemaming != nil {
-						return fmt.Errorf("failed to create symlink, and failed to restore original file while recovering from hoisting error: %w", errRemaming)
+					// fmt.Printf("[DEBUG] Error creating symlink: %v for file: %v\n", err, originalPath)
+					// and recover if symlink fails and the tmpfile exist
+					if errRenaming := os.Rename(tmpFilename, originalPath); errRenaming != nil {
+						fmt.Printf("Error renaming temp file back to original: %v\n", errRenaming)
+						return fmt.Errorf("failed to create symlink, and failed to restore original file while recovering from hoisting error: %w", errRenaming)
 					}
 					return fmt.Errorf("failed to create symlink: %w", err)
+				}
+
+				// check if tmpfilename exists
+				if _, err := os.Stat(tmpFilename); !os.IsNotExist(err) {
+					// fmt.Printf("[DEBUG] Removing tmp file: %v\n", tmpFilename)
+					if err := os.Remove(tmpFilename); err != nil {
+						// debug output
+						fmt.Printf("Error removing tmp file: %v\n", err)
+						return fmt.Errorf("failed to remove tmp file: %w", err)
+					}
 				}
 			}
 		}
