@@ -46,6 +46,7 @@ func isSymlink(filePath string) (bool, error) {
 // Function to recursively scan a directory and identify duplicate files
 func scanDirectoryForDupes(rootDir string) (map[string][]string, error) {
 	fileHashes := make(map[string][]string)
+	// get the settings
 	settings := NewSettings()
 
 	// Walk the directory and calculate the hash of each file
@@ -54,8 +55,8 @@ func scanDirectoryForDupes(rootDir string) (map[string][]string, error) {
 		if err != nil {
 			return err
 		}
-		// skip the hoist directory
-		if filepath.Base(rootDir) == filepath.Join(rootDir, settings.hoistDirname) {
+		// skip the hoist directory `settings.hoistDirname`
+		if filepath.Base(path) == settings.hoistDirname {
 			return filepath.SkipDir
 		}
 		// skip all links

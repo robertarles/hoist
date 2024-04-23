@@ -1,0 +1,44 @@
+#!/usr/bin/env bash
+
+# Get the directory of the script
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+
+# Function to detect the operating system
+get_os() {
+	case "$(uname -s)" in
+	Linux*) echo "linux" ;;
+	Darwin*) echo "darwin" ;;
+	*) echo "unsupported" ;;
+	esac
+}
+
+# Function to detect the architecture
+get_arch() {
+	case "$(uname -m)" in
+	x86_64) echo "amd64" ;;
+	arm64) echo "arm64" ;;
+	*) echo "unsupported" ;;
+	esac
+}
+
+# Get the current operating system and architecture
+OS=$(get_os)
+ARCH=$(get_arch)
+
+# Check if the OS and architecture are supported
+if [ "$OS" == "unsupported" ] || [ "$ARCH" == "unsupported" ]; then
+	echo "Unsupported OS or architecture"
+	exit 1
+fi
+
+# Construct the binary name
+BINARY="${SCRIPT_DIR}/hoist_${OS}_${ARCH}"
+"Chose: ${BINARY}"
+# Check if the binary exists
+if [ -x "$BINARY" ]; then
+	# Execute the binary
+	"$BINARY" "$@"
+else
+	echo "Binary $BINARY not found"
+	exit 1
+fi
